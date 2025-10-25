@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// Correcting paths relative to src/pages/LearningMaterials.jsx
 import Page from '../components/Page.jsx';
 import StatusMessage from '../components/StatusMessage.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
-import { http, getSessionAuth, API_BASE } from '../lib/api.js'; // Import http, getSessionAuth, and API_BASE
+import { http, getSessionAuth, API_BASE } from '../lib/api.js';
 
-// Define the LearningMaterialsPage component
 export default function LearningMaterialsPage() {
     // State variables
     const [materials, setMaterials] = useState([]); // List of uploaded materials
@@ -13,6 +11,8 @@ export default function LearningMaterialsPage() {
     const [uploadStatus, setUploadStatus] = useState({ message: '', type: '' }); // Upload feedback { message, type: 'info'|'success'|'error' }
     const [loadingList, setLoadingList] = useState(true); // Loading state for the materials list
     const [uploading, setUploading] = useState(false); // Loading state for file upload
+    const [viewingMaterial, setViewingMaterial] = useState(null); // Material being viewed
+    const [loadingContent, setLoadingContent] = useState(false); // Loading state for content viewer
 
     // Fetch materials when the component mounts
     const fetchMaterials = useCallback(async () => {
@@ -107,6 +107,27 @@ export default function LearningMaterialsPage() {
         }
     };
 
+    // Handle viewing material content
+    const handleViewContent = async (materialId, materialName) => {
+        setLoadingContent(true);
+        setUploadStatus({ message: `Loading ${materialName}...`, type: 'info' });
+        
+        try {
+            const material = await http(`/materials/${materialId}`);
+            setViewingMaterial(material);
+            setUploadStatus({ message: '', type: '' });
+        } catch (error) {
+            setUploadStatus({ message: error.message || 'Failed to load content.', type: 'error' });
+        } finally {
+            setLoadingContent(false);
+        }
+    };
+
+    // Handle closing the content viewer
+    const handleCloseViewer = () => {
+        setViewingMaterial(null);
+    };
+
     // Handle deleting a material
     const handleDelete = async (materialId, materialName) => {
         // NOTE: Standard confirm is discouraged, replace with a modal if possible in production
@@ -172,13 +193,22 @@ export default function LearningMaterialsPage() {
                                 <span className="text-sm font-medium text-neutral-800 truncate pr-4" title={material.originalName}>
                                     {material.originalName}
                                 </span>
-                                <button
-                                    onClick={() => handleDelete(material._id, material.originalName)}
-                                    className="btn-ghost text-xs text-red-600 hover:text-red-800"
-                                    disabled={uploadStatus.message.startsWith('Deleting')} // Prevent double clicks
-                                >
-                                    Delete
-                                </button>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => handleViewContent(material._id, material.originalName)}
+                                        className="btn-ghost text-xs text-blue-600 hover:text-blue-800"
+                                        disabled={loadingContent}
+                                    >
+                                        View Content
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(material._id, material.originalName)}
+                                        className="btn-ghost text-xs text-red-600 hover:text-red-800"
+                                        disabled={uploadStatus.message.startsWith('Deleting')} // Prevent double clicks
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
                             </li>
                         ))}
                     </ul>
@@ -190,8 +220,62 @@ export default function LearningMaterialsPage() {
                      </StatusMessage>
                  )}
             </section>
+
+            {/* Content Viewer Modal */}
+            {viewingMaterial && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={handleCloseViewer}>
+                    <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between p-4 border-b">
+                            <h3 className="text-lg font-semibold truncate pr-4">
+                                {viewingMaterial.originalName}
+                            </h3>
+                            <button 
+                                onClick={handleCloseViewer}
+                                className="text-gray-500 hover:text-gray-700 text-2xl leading-none flex-shrink-0 w-8 h-8 flex items-center justify-center"
+                                aria-label="Close"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        
+                        {/* Modal Content */}
+                        <div className="p-4 overflow-y-auto flex-grow">
+                            <div className="text-sm text-gray-600 mb-3 flex items-center justify-between">
+                                <span>
+                                    <strong>Extracted Text:</strong> {viewingMaterial.content?.length || 0} characters
+                                </span>
+                                <span className="text-xs">
+                                    Uploaded: {new Date(viewingMaterial.createdAt).toLocaleDateString()}
+                                </span>
+                            </div>
+                            
+                            {viewingMaterial.content && viewingMaterial.content.trim() ? (
+                                <pre className="whitespace-pre-wrap font-mono text-sm bg-gray-50 p-4 rounded border border-gray-200 max-h-96 overflow-auto">
+                                    {viewingMaterial.content}
+                                </pre>
+                            ) : (
+                                <div className="bg-yellow-50 border border-yellow-200 rounded p-4 text-yellow-800">
+                                    <p className="font-semibold mb-2">⚠️ No text content extracted</p>
+                                    <p className="text-sm">
+                                        This might be an image-based PDF that requires OCR processing, or the file may not contain extractable text.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Modal Footer */}
+                        <div className="p-4 border-t flex justify-end">
+                            <button 
+                                onClick={handleCloseViewer}
+                                className="btn-primary"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </Page>
     );
 }
-
-

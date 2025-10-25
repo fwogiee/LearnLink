@@ -2,271 +2,223 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import pdfParse from 'pdf-parse'; // Use ES module import
+import pdfParse from 'pdf-parse';
 import Tesseract from 'tesseract.js';
-// pdf-poppler might require adjustments depending on its export type, assuming default export works
-// Consider error handling if 'convert' is not directly available this way
 import pdfPoppler from 'pdf-poppler';
-const { convert } = pdfPoppler; // Assuming 'convert' is exported correctly
+const { convert } = pdfPoppler;
 
-import { requireAuth } from '../middleware/auth.js'; // Use LearnLink's auth middleware
-import LearningMaterial from '../models/LearningMaterial.js'; // Use the new model location
+import { requireAuth } from '../middleware/auth.js';
+import LearningMaterial from '../models/LearningMaterial.js';
 
 const router = express.Router();
 
-// Determine __dirname equivalent in ES modules
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// --- Multer Configuration ---
-const UPLOADS_DIR = path.join(__dirname, '../../uploads'); // Relative to this file's location
+const UPLOADS_DIR = path.join(__dirname, '../../uploads');
 const TEMP_DIR = path.join(UPLOADS_DIR, 'temp');
 
-// Ensure uploads and temp directories exist
 if (!fs.existsSync(UPLOADS_DIR)) {
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  console.log('Created uploads directory at:', UPLOADS_DIR);
 }
 if (!fs.existsSync(TEMP_DIR)) {
-    fs.mkdirSync(TEMP_DIR, { recursive: true });
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
+  console.log('Created temp directory at:', TEMP_DIR);
 }
 
-// Set up storage for uploaded files
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, UPLOADS_DIR);
-    },
-    filename: (req, file, cb) => {
-        // Sanitize filename and ensure uniqueness
-        const safeOriginalName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-        cb(null, `${Date.now()}-${safeOriginalName}`);
-    }
-});
-
-// File filter to allow only PDF and TXT
-const fileFilter = (req, file, cb) => {
-    const allowedTypes = ['application/pdf', 'text/plain'];
-    if (allowedTypes.includes(file.mimetype)) {
-        cb(null, true); // Accept file
-    } else {
-        // Reject file with a specific error message
-        cb(new Error('Invalid file type. Only PDF and TXT files are allowed.'), false);
-    }
-};
-
-// Multer instance with limits and filter
 const upload = multer({
-    storage,
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB size limit
-    fileFilter
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+    filename: (req, file, cb) => {
+      const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      cb(null, `${Date.now()}-${safe}`);
+    }
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['application/pdf', 'text/plain'];
+    allowed.includes(file.mimetype) 
+      ? cb(null, true) 
+      : cb(new Error('Invalid file type. Only PDF and TXT files are allowed.'), false);
+  }
 });
 
-// --- Helper function to process uploads after multer ---
-async function processUpload(req, res) {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ message: 'No file uploaded.' });
-        }
-
-        const { originalname, path: filePath, mimetype, filename } = req.file;
-        let extractedText = '';
-
-        // --- Text Extraction Logic ---
-        if (mimetype === 'application/pdf') {
-            console.log(`Processing PDF: ${originalname}`);
-            try {
-                // First try direct text extraction
-                const dataBuffer = fs.readFileSync(filePath);
-                const data = await pdfParse(dataBuffer);
-                extractedText = data.text || ''; // Ensure it's a string
-
-                console.log(`📄 PDF Info: ${originalname}`);
-                console.log(`  - Pages: ${data.numpages}`);
-                console.log(`  - Text length: ${extractedText.length} chars`);
-
-                // If very little text extracted and it looks like an image PDF, try OCR
-                if (extractedText.trim().length < 100 && data.numpages > 0) {
-                    console.log('⚠️ PDF has minimal text, attempting OCR on first page...');
-
-                    // Convert first page of PDF to an image for OCR
-                    const opts = {
-                        format: 'png',
-                        out_dir: TEMP_DIR,
-                        out_prefix: path.basename(filename, path.extname(filename)),
-                        page: 1 // Process only the first page for OCR attempt
-                    };
-
-                    // Check if pdfPoppler is installed and working
-                    try {
-                        await convert(filePath, opts); // Use await here
-                        const imagePath = path.join(TEMP_DIR, `${opts.out_prefix}-1.png`);
-
-                        if (fs.existsSync(imagePath)) {
-                            console.log(`Running OCR on ${imagePath}...`);
-                            const { data: ocrData } = await Tesseract.recognize(imagePath, 'eng', {
-                                logger: m => console.log(`[OCR]: ${m.status} (${(m.progress * 100).toFixed(1)}%)`) // Log OCR progress
-                            });
-                            extractedText = ocrData.text || ''; // Fallback to empty string
-                            console.log(`✅ OCR extracted ${extractedText.length} characters.`);
-                            // Clean up temporary image file
-                            fs.unlinkSync(imagePath);
-                        } else {
-                            console.log('Temporary image file not found after conversion.');
-                        }
-                    } catch (popplerError) {
-                        console.error('❌ Failed to convert PDF page to image for OCR (pdf-poppler might be missing or misconfigured):', popplerError.message);
-                        // Do not overwrite extractedText if conversion failed
-                    }
-                }
-            } catch (pdfError) {
-                console.error(`❌ Error processing PDF ${originalname}:`, pdfError.message);
-                extractedText = ''; // Fallback to empty string on error
-            }
-        } else if (mimetype === 'text/plain') {
-            console.log(`Processing TXT: ${originalname}`);
-            extractedText = fs.readFileSync(filePath, 'utf8');
-            console.log(`  - Text length: ${extractedText.length} chars`);
-        }
-        // --- End of Text Extraction ---
-
-        // Save metadata and extracted text to database
-        const newMaterial = new LearningMaterial({
-            originalName: originalname,
-            path: `/uploads/${filename}`, // Store relative path for potential future serving
-            mimeType: mimetype,
-            content: extractedText.trim(), // Store the extracted text
-            owner: req.user._id // Associate with the logged-in user
-        });
-
-        await newMaterial.save();
-        // Respond with the created material data (excluding large content field)
-        const { content, ...responseData } = newMaterial.toObject();
-        res.status(201).json(responseData);
-
-    } catch (error) {
-        console.error('❌ Server error during file processing:', error);
-        // Clean up uploaded file if DB save fails
-        if (req.file && req.file.path && fs.existsSync(req.file.path)) {
-           try {
-              fs.unlinkSync(req.file.path);
-              console.log(`Cleaned up failed upload: ${req.file.filename}`);
-           } catch (unlinkErr) {
-               console.error(`Failed to cleanup file ${req.file.filename}:`, unlinkErr);
-           }
-        }
-        res.status(500).json({ message: 'Server error during file processing.' });
+async function attemptOCR(filePath, filename) {
+  try {
+    const opts = {
+      format: 'png',
+      out_dir: TEMP_DIR,
+      out_prefix: path.basename(filename, path.extname(filename)),
+      page: 1
+    };
+    await convert(filePath, opts);
+    const imagePath = path.join(TEMP_DIR, `${opts.out_prefix}-1.png`);
+    
+    if (fs.existsSync(imagePath)) {
+      console.log(`Running OCR on ${imagePath}...`);
+      const { data: ocrData } = await Tesseract.recognize(imagePath, 'eng', {
+        logger: m => console.log(`[OCR]: ${m.status} (${(m.progress * 100).toFixed(1)}%)`)
+      });
+      fs.unlinkSync(imagePath);
+      console.log(`OCR extracted ${ocrData.text?.length || 0} characters.`);
+      return ocrData.text || '';
     }
+  } catch (error) {
+    console.error('OCR failed:', error.message);
+  }
+  return '';
 }
 
+async function extractText(filePath, mimetype, originalname, filename) {
+  if (mimetype === 'text/plain') {
+    console.log(`Processing TXT: ${originalname}`);
+    const text = fs.readFileSync(filePath, 'utf8');
+    console.log(`  - Text length: ${text.length} chars`);
+    return text;
+  }
 
-// --- Routes ---
+  if (mimetype === 'application/pdf') {
+    console.log(`Processing PDF: ${originalname}`);
+    try {
+      const dataBuffer = fs.readFileSync(filePath);
+      const data = await pdfParse(dataBuffer);
+      let text = data.text || '';
+      
+      console.log(`PDF Info: ${originalname}`);
+      console.log(`  - Pages: ${data.numpages}`);
+      console.log(`  - Text length: ${text.length} chars`);
 
-// POST /materials/upload - Upload a new learning material
-router.post('/upload', requireAuth, (req, res) => {
-    // Use multer middleware first
-    const uploader = upload.single('material'); // 'material' should match the FormData key
+      if (text.trim().length < 100 && data.numpages > 0) {
+        console.log('Minimal text found, attempting OCR...');
+        const ocrText = await attemptOCR(filePath, filename);
+        if (ocrText) text = ocrText;
+      }
+      
+      return text;
+    } catch (error) {
+      console.error(`Error processing PDF ${originalname}:`, error.message);
+      return '';
+    }
+  }
 
-    uploader(req, res, function (err) {
-        // Handle multer errors (like file size or type)
-        if (err instanceof multer.MulterError) {
-            console.error('Multer error:', err);
-            if (err.code === 'LIMIT_FILE_SIZE') {
-                return res.status(400).json({ message: 'File too large. Maximum size is 10MB.' });
-            }
-            return res.status(400).json({ message: `File upload error: ${err.message}` });
-        } else if (err) {
-            // Handle custom errors (like file type filter)
-             console.error('Upload error:', err);
-            return res.status(400).json({ message: err.message });
-        }
+  return '';
+}
 
-        // If no multer error, proceed to process the file (extract text, save to DB)
-        processUpload(req, res);
-    });
+function cleanupFile(filePath, filename) {
+  if (filePath && fs.existsSync(filePath)) {
+    try {
+      fs.unlinkSync(filePath);
+      console.log(`Cleaned up file: ${filename}`);
+    } catch (err) {
+      console.error(`Failed to cleanup ${filename}:`, err);
+    }
+  }
+}
+
+router.use(requireAuth);
+
+router.post('/upload', (req, res) => {
+  upload.single('material')(req, res, async (err) => {
+    if (err instanceof multer.MulterError) {
+      console.error('Multer error:', err);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'File too large. Maximum size is 10MB.' });
+      }
+      return res.status(400).json({ message: `File upload error: ${err.message}` });
+    }
+    if (err) {
+      console.error('Upload error:', err);
+      return res.status(400).json({ message: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded.' });
+    }
+
+    try {
+      const { originalname, path: filePath, mimetype, filename } = req.file;
+      const content = await extractText(filePath, mimetype, originalname, filename);
+      
+      const material = await LearningMaterial.create({
+        originalName: originalname,
+        path: `/uploads/${filename}`,
+        mimeType: mimetype,
+        content: content.trim(),
+        owner: req.user._id
+      });
+
+      const { content: _, ...response } = material.toObject();
+      res.status(201).json(response);
+    } catch (error) {
+      console.error('File processing error:', error);
+      cleanupFile(req.file.path, req.file.filename);
+      res.status(500).json({ message: 'Server error during file processing.' });
+    }
+  });
 });
 
-// GET /materials - Get all learning materials for the logged-in user (metadata only)
-router.get('/', requireAuth, async (req, res) => {
-    try {
-        // Fetch materials for the current user, excluding the large 'content' field
-        const materials = await LearningMaterial.find({ owner: req.user._id })
-            .select('-content -path') // Exclude content and path for list view
-            .sort({ createdAt: -1 }); // Sort by newest first
-        res.json(materials);
-    } catch (error) {
-        console.error('Error fetching materials list:', error);
-        res.status(500).json({ message: 'Server error fetching materials.' });
-    }
+router.get('/', async (req, res) => {
+  try {
+    const materials = await LearningMaterial.find({ owner: req.user._id })
+      .select('-content -path')
+      .sort({ createdAt: -1 });
+    res.json(materials);
+  } catch (error) {
+    console.error('Error fetching materials:', error);
+    res.status(500).json({ message: 'Server error fetching materials.' });
+  }
 });
 
-// GET /materials/:id - Get a single learning material, including its content
-router.get('/:id', requireAuth, async (req, res) => {
-    try {
-        const material = await LearningMaterial.findById(req.params.id);
-
-        if (!material) {
-            return res.status(404).json({ message: 'Material not found.' });
-        }
-
-        // Ensure the logged-in user owns this material before sending content
-        if (!material.owner.equals(req.user._id)) {
-            return res.status(403).json({ message: 'Forbidden: You do not own this material.' });
-        }
-
-        // Respond with full material data, including content
-        res.json(material);
-    } catch (error) {
-         if (error.kind === 'ObjectId') {
-             return res.status(400).json({ message: 'Invalid material ID format.' });
-         }
-        console.error(`Error fetching material ${req.params.id}:`, error);
-        res.status(500).json({ message: 'Server error fetching material details.' });
+router.get('/:id', async (req, res) => {
+  try {
+    const material = await LearningMaterial.findById(req.params.id);
+    if (!material) {
+      return res.status(404).json({ message: 'Material not found.' });
     }
+    if (!material.owner.equals(req.user._id)) {
+      return res.status(403).json({ message: 'Forbidden: You do not own this material.' });
+    }
+    res.json(material);
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({ message: 'Invalid material ID format.' });
+    }
+    console.error(`Error fetching material ${req.params.id}:`, error);
+    res.status(500).json({ message: 'Server error fetching material details.' });
+  }
 });
 
-// DELETE /materials/:id - Delete a learning material
-router.delete('/:id', requireAuth, async (req, res) => {
-    try {
-        const material = await LearningMaterial.findById(req.params.id);
-
-        if (!material) {
-            return res.status(404).json({ message: 'Material not found.' });
-        }
-
-        // Ensure the user owns this material before deleting
-        if (!material.owner.equals(req.user._id)) {
-            return res.status(403).json({ message: 'Forbidden: You do not own this material.' });
-        }
-
-        // Delete the physical file from the uploads directory
-        // Use the filename stored in the path, assuming it's relative like '/uploads/filename.pdf'
-        const filename = path.basename(material.path);
-        const fullFilePath = path.join(UPLOADS_DIR, filename);
-
-        if (fs.existsSync(fullFilePath)) {
-            try {
-                fs.unlinkSync(fullFilePath);
-                console.log(`Deleted file: ${fullFilePath}`);
-            } catch (unlinkErr) {
-                // Log error but proceed with DB deletion anyway
-                console.error(`Failed to delete file ${fullFilePath}:`, unlinkErr);
-            }
-        } else {
-             console.log(`File not found, skipping delete: ${fullFilePath}`);
-        }
-
-        // Delete the record from the database
-        await LearningMaterial.findByIdAndDelete(req.params.id);
-
-        res.json({ message: 'Material deleted successfully.' });
-    } catch (error) {
-         if (error.kind === 'ObjectId') {
-             return res.status(400).json({ message: 'Invalid material ID format.' });
-         }
-        console.error(`Error deleting material ${req.params.id}:`, error);
-        res.status(500).json({ message: 'Server error deleting material.' });
+router.delete('/:id', async (req, res) => {
+  try {
+    const material = await LearningMaterial.findById(req.params.id);
+    if (!material) {
+      return res.status(404).json({ message: 'Material not found.' });
     }
+    if (!material.owner.equals(req.user._id)) {
+      return res.status(403).json({ message: 'Forbidden: You do not own this material.' });
+    }
+
+    const filename = path.basename(material.path);
+    const fullPath = path.join(UPLOADS_DIR, filename);
+    if (fs.existsSync(fullPath)) {
+      try {
+        fs.unlinkSync(fullPath);
+        console.log(`Deleted file: ${fullPath}`);
+      } catch (err) {
+        console.error(`Failed to delete file ${fullPath}:`, err);
+      }
+    }
+
+    await LearningMaterial.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Material deleted successfully.' });
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({ message: 'Invalid material ID format.' });
+    }
+    console.error(`Error deleting material ${req.params.id}:`, error);
+    res.status(500).json({ message: 'Server error deleting material.' });
+  }
 });
 
 export default router;
-
