@@ -10,6 +10,7 @@ import AiFlashcardsPage from './pages/AiFlashcards.jsx';
 import QuizBuilderPage from './pages/QuizBuilder.jsx';
 import QuizPlayerPage from './pages/QuizPlayer.jsx';
 import AdminPage from './pages/Admin.jsx';
+import LearningMaterialsPage from './pages/LearningMaterials.jsx';
 
 function App() {
   return (
@@ -32,6 +33,8 @@ function App() {
             <Route path="/quizzes/:id/play" element={<QuizPlayerPage />} />
 
             <Route path="/admin" element={<AdminPage />} />
+
+            <Route path="/materials" element={<LearningMaterialsPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
