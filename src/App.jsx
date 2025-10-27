@@ -9,6 +9,7 @@ import FlashcardDetailPage from './pages/FlashcardDetail.jsx';
 import AiFlashcardsPage from './pages/AiFlashcards.jsx';
 import QuizBuilderPage from './pages/QuizBuilder.jsx';
 import QuizPlayerPage from './pages/QuizPlayer.jsx';
+import LearningMaterialsPage from './pages/LearningMaterials.jsx';
 import AdminPage from './pages/Admin.jsx';
 
 function App() {
@@ -30,6 +31,7 @@ function App() {
 
             <Route path="/quizzes" element={<QuizBuilderPage />} />
             <Route path="/quizzes/:id/play" element={<QuizPlayerPage />} />
+            <Route path="/materials" element={<LearningMaterialsPage />} />
 
             <Route path="/admin" element={<AdminPage />} />
           </Route>

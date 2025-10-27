@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: HomeIcon },
   { to: '/flashcards', label: 'Flashcards', icon: CardsIcon },
+  { to: '/materials', label: 'Learning Materials', icon: BookIcon },
   { to: '/ai-flashcards', label: 'AI Flashcards', icon: SparklesIcon },
   { to: '/quizzes', label: 'Quizzes', icon: ClipboardIcon },
 ];
@@ -91,6 +92,15 @@ function CardsIcon(props) {
     <svg {...withIconProps(props)}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75V15a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 15V6.75z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 9h9m-9 3h9m-9 3h5.25" />
+    </svg>
+  );
+}
+
+function BookIcon(props) {
+  return (
+    <svg {...withIconProps(props)}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 4.5h8.25A2.25 2.25 0 0 1 17.25 6.75v10.5A2.25 2.25 0 0 0 15 15h-8.25A2.25 2.25 0 0 0 4.5 17.25V6.75A2.25 2.25 0 0 1 6.75 4.5z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 4.5c1.243 0 2.25 1.12 2.25 2.25v10.5c0 .621-.504 1.125-1.125 1.125M6.75 4.5c-1.243 0-2.25 1.12-2.25 2.25v10.5c0 .621.504 1.125 1.125 1.125" />
     </svg>
   );
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import Page from '../components/Page.jsx';
 import StatusMessage from '../components/StatusMessage.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
@@ -7,7 +7,6 @@ import { http } from '../lib/api.js';
 
 export default function FlashcardDetailPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [setData, setSetData] = useState(null);
   const [cards, setCards] = useState([]);
   const [index, setIndex] = useState(0);
