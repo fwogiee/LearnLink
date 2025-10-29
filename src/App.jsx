@@ -11,7 +11,6 @@ import QuizBuilderPage from './pages/QuizBuilder.jsx';
 import QuizPlayerPage from './pages/QuizPlayer.jsx';
 import LearningMaterialsPage from './pages/LearningMaterials.jsx';
 import AdminPage from './pages/Admin.jsx';
-import LearningMaterialsPage from './pages/LearningMaterials.jsx';
 
 function App() {
   return (
@@ -35,8 +34,6 @@ function App() {
             <Route path="/materials" element={<LearningMaterialsPage />} />
 
             <Route path="/admin" element={<AdminPage />} />
-
-            <Route path="/materials" element={<LearningMaterialsPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
