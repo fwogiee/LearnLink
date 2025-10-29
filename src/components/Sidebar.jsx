@@ -7,7 +7,6 @@ const NAV_ITEMS = [
   { to: '/materials', label: 'Learning Materials', icon: BookIcon },
   { to: '/ai-flashcards', label: 'AI Flashcards', icon: SparklesIcon },
   { to: '/quizzes', label: 'Quizzes', icon: ClipboardIcon },
-  { to: '/materials', label: 'Materials', icon: DocumentIcon },
 ];
 
 export default function Sidebar() {
@@ -119,14 +118,6 @@ function ClipboardIcon(props) {
     <svg {...withIconProps(props)}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 7.5h6m-3-3h-1.875A2.625 2.625 0 0 0 7.5 7.125V18.75A2.25 2.25 0 0 0 9.75 21h4.5A2.25 2.25 0 0 0 16.5 18.75V7.125A2.625 2.625 0 0 0 13.875 4.5H12Z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6" />
-    </svg>
-  );
-}
-
-function DocumentIcon(props) {
-  return (
-    <svg {...withIconProps(props)}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
     </svg>
   );
 }
