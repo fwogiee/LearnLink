@@ -11,13 +11,12 @@ import setsRoutes from './routes/sets.js';
 import quizzesRoutes from './routes/quizzes.js';
 import aiRoutes from './routes/ai.js';
 import adminRoutes from './routes/admin.js';
-import learningMaterialsRoutes from './routes/materials.js';
+import materialsRoutes from './routes/materials.js';
 
 const app = express();
 
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: false }));
-app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,6 +24,13 @@ const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
+
+// IMPORTANT: Register materials route BEFORE express.json()
+// because it uses multer for file uploads (multipart/form-data)
+app.use('/materials', materialsRoutes);
+
+// Now apply JSON parser for other routes
+app.use(express.json({ limit: '50mb' }));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -35,11 +41,25 @@ app.use('/sets', setsRoutes);
 app.use('/quizzes', quizzesRoutes);
 app.use('/ai', aiRoutes);
 app.use('/admin', adminRoutes);
-app.use('/materials', learningMaterialsRoutes);
 app.use('/uploads', express.static(uploadsDir));
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not found.' });
+});
+
+// Error handling middleware - must be after all routes
+app.use((err, req, res, next) => {
+  console.error('Error handler caught:', err);
+  
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ 
+      message: 'Request too large. Maximum size is 50MB.' 
+    });
+  }
+  
+  res.status(err.status || 500).json({ 
+    message: err.message || 'Internal server error' 
+  });
 });
 
 const PORT = Number(process.env.PORT) || 4000;
