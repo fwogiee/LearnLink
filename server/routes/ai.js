@@ -22,45 +22,50 @@ router.post('/flashcards', async (req, res) => {
 });
 
 async function generateFlashcards(topic, count) {
-  const apiKey = process.env.TOGETHER_AI_API;
+  const apiKey = process.env.GEMINI_API_KEY;
+  console.log('API Key loaded:', apiKey ? 'YES' : 'NO');
   if (!apiKey) {
     return buildFallbackCards(topic, count);
   }
 
   try {
-    const response = await fetch('https://api.together.xyz/v1/chat/completions', {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: process.env.TOGETHER_AI_MODEL || 'meta-llama/Llama-3.1-8B-Instruct-Turbo',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful assistant that creates concise study flashcards in JSON.',
-          },
-          {
-            role: 'user',
-            content: `Create ${count} flashcards for the topic "${topic}". Return JSON array with objects containing term, definition, and example fields.`,
-          },
-        ],
-        max_tokens: 600,
-        temperature: 0.3,
+        contents: [{
+          parts: [{
+            text: `You are a helpful assistant that creates concise study flashcards in JSON. Create ${count} flashcards for the topic "${topic}". Return JSON array with objects containing term, definition, and example fields.`
+          }]
+        }],
+        generationConfig: {
+          maxOutputTokens: 600,
+          temperature: 0.3,
+          thinkingConfig: {
+            thinkingBudget: 0
+          }
+        }
       }),
     });
 
     if (!response.ok) {
-      console.error('Together API error', await response.text());
+      console.error('Gemini API error', await response.text());
       return buildFallbackCards(topic, count);
     }
 
     const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
+    console.log('Full Gemini response:', JSON.stringify(data, null, 2));
+    
+    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    console.log('Extracted content:', content);
+    
     if (!content) return buildFallbackCards(topic, count);
 
     const jsonMatch = content.match(/\[[\s\S]*\]/);
+    console.log('JSON match found:', jsonMatch ? 'YES' : 'NO');
+    
     if (!jsonMatch) return buildFallbackCards(topic, count);
     const parsed = JSON.parse(jsonMatch[0]);
     return parsed
@@ -73,7 +78,7 @@ async function generateFlashcards(topic, count) {
         example: card.example || card.usage || '',
       }));
   } catch (error) {
-    console.error('Together API failure', error);
+    console.error('Gemini API failure', error);
     return buildFallbackCards(topic, count);
   }
 }
