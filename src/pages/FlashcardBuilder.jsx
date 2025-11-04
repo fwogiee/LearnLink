@@ -12,6 +12,7 @@ export default function FlashcardBuilderPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [cards, setCards] = useState([EMPTY_CARD()]);
+  const [dictionaryState, setDictionaryState] = useState({});
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const cloneId = searchParams.get('clone');
@@ -51,10 +52,75 @@ export default function FlashcardBuilderPage() {
 
   const updateCard = (id, field, value) => {
     setCards((prev) => prev.map((card) => (card.id === id ? { ...card, [field]: value } : card)));
+    if (field === 'term' || field === 'definition') {
+      setDictionaryState((prev) => {
+        if (!prev[id]) return prev;
+        if (field === 'definition' && prev[id].loading) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
   };
 
   const removeCard = (id) => {
     setCards((prev) => (prev.length <= 1 ? prev : prev.filter((card) => card.id !== id)));
+  };
+
+  useEffect(() => {
+    setDictionaryState((prev) => {
+      const next = {};
+      cards.forEach((card) => {
+        if (prev[card.id]) next[card.id] = prev[card.id];
+      });
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (prevKeys.length === nextKeys.length && nextKeys.every((key) => prev[key] === next[key])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [cards]);
+
+  const handleAutofillDefinition = async (id) => {
+    const target = cards.find((card) => card.id === id);
+    const term = target?.term?.trim();
+
+    if (!term) {
+      setDictionaryState((prev) => ({
+        ...prev,
+        [id]: { loading: false, error: 'Add a term before autofilling.' },
+      }));
+      return;
+    }
+
+    setDictionaryState((prev) => ({
+      ...prev,
+      [id]: { loading: true, error: '' },
+    }));
+
+    try {
+      const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(term)}`);
+      if (!response.ok) {
+        throw new Error(`No definition found for "${term}".`);
+      }
+      const payload = await response.json();
+      const definition = extractPrimaryDefinition(payload);
+      if (!definition) {
+        throw new Error(`No definition found for "${term}".`);
+      }
+      updateCard(id, 'definition', definition);
+      setDictionaryState((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } catch (error) {
+      setDictionaryState((prev) => ({
+        ...prev,
+        [id]: { loading: false, error: error.message || 'Failed to fetch definition.' },
+      }));
+    }
   };
 
   const handleSubmit = async (event) => {
@@ -165,13 +231,26 @@ export default function FlashcardBuilderPage() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-neutral-600">Definition</label>
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="text-xs font-medium text-neutral-600">Definition</label>
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => handleAutofillDefinition(card.id)}
+                        disabled={dictionaryState[card.id]?.loading}
+                      >
+                        {dictionaryState[card.id]?.loading ? 'Fetching...' : 'Auto-fill'}
+                      </button>
+                    </div>
                     <textarea
                       className="input min-h-[96px] resize-y"
                       placeholder="Definition"
                       value={card.definition}
                       onChange={(event) => updateCard(card.id, 'definition', event.target.value)}
                     />
+                    {dictionaryState[card.id]?.error ? (
+                      <p className="text-xs text-red-600">{dictionaryState[card.id].error}</p>
+                    ) : null}
                   </div>
                 </div>
               </article>
@@ -188,4 +267,23 @@ export default function FlashcardBuilderPage() {
       </form>
     </Page>
   );
+}
+
+function extractPrimaryDefinition(payload) {
+  if (!Array.isArray(payload)) return '';
+  for (const entry of payload) {
+    const meanings = entry?.meanings;
+    if (!Array.isArray(meanings)) continue;
+    for (const meaning of meanings) {
+      const definitions = meaning?.definitions;
+      if (!Array.isArray(definitions)) continue;
+      for (const item of definitions) {
+        const text = item?.definition;
+        if (typeof text === 'string' && text.trim()) {
+          return text.trim();
+        }
+      }
+    }
+  }
+  return '';
 }
