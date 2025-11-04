@@ -34,3 +34,21 @@
     @apply inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-600;
   }
 }
+
+@layer utilities {
+  .match-shake {
+    animation: match-shake 0.35s ease-in-out;
+  }
+}
+
+@keyframes match-shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  20%, 60% {
+    transform: translateX(-4px);
+  }
+  40%, 80% {
+    transform: translateX(4px);
+  }
+}

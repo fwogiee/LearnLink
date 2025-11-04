@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Page from '../components/Page.jsx';
 import StatusMessage from '../components/StatusMessage.jsx';
@@ -13,6 +19,20 @@ export default function FlashcardDetailPage() {
   const [flipped, setFlipped] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [matchingTerms, setMatchingTerms] = useState([]);
+  const [matchingDefinitions, setMatchingDefinitions] = useState([]);
+  const [matchingSelections, setMatchingSelections] = useState({ term: null, definition: null });
+  const [matchingIncorrect, setMatchingIncorrect] = useState(null);
+  const [matchingStarted, setMatchingStarted] = useState(false);
+  const mismatchTimeoutRef = useRef(null);
+
+  const clearMismatchFeedback = useCallback(() => {
+    if (mismatchTimeoutRef.current) {
+      window.clearTimeout(mismatchTimeoutRef.current);
+      mismatchTimeoutRef.current = null;
+    }
+    setMatchingIncorrect(null);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -46,6 +66,10 @@ export default function FlashcardDetailPage() {
 
   const total = cards.length;
   const current = total ? cards[index] : null;
+  const validMatchingCards = useMemo(
+    () => cards.filter((card) => (card.term?.trim() ?? '') !== '' && (card.definition?.trim() ?? '') !== ''),
+    [cards],
+  );
 
   const goPrev = useCallback(() => {
     if (!total) return;
@@ -78,6 +102,109 @@ export default function FlashcardDetailPage() {
     window.addEventListener('keydown', listener);
     return () => window.removeEventListener('keydown', listener);
   }, [goPrev, goNext]);
+
+  useEffect(() => {
+    setMatchingStarted(false);
+    setMatchingTerms([]);
+    setMatchingDefinitions([]);
+    setMatchingSelections({ term: null, definition: null });
+    clearMismatchFeedback();
+  }, [id, clearMismatchFeedback]);
+
+  useEffect(
+    () => () => {
+      if (mismatchTimeoutRef.current) {
+        window.clearTimeout(mismatchTimeoutRef.current);
+        mismatchTimeoutRef.current = null;
+      }
+    },
+    [],
+  );
+
+  const startMatchingGame = useCallback(() => {
+    const playableCards = validMatchingCards.map((card) => ({
+      cardId: card.id,
+      term: card.term.trim(),
+      definition: card.definition.trim(),
+    }));
+    const terms = shuffleArray(playableCards).map((card) => ({
+      cardId: card.cardId,
+      text: card.term,
+    }));
+    const definitions = shuffleArray(playableCards).map((card) => ({
+      cardId: card.cardId,
+      text: card.definition,
+    }));
+
+    clearMismatchFeedback();
+    setMatchingTerms(terms);
+    setMatchingDefinitions(definitions);
+    setMatchingSelections({ term: null, definition: null });
+    setMatchingStarted(true);
+  }, [clearMismatchFeedback, validMatchingCards]);
+
+  const resolveMatchAttempt = useCallback(
+    (termItem, definitionItem) => {
+      if (!termItem || !definitionItem) return;
+
+      if (termItem.cardId === definitionItem.cardId) {
+        clearMismatchFeedback();
+        setMatchingTerms((prev) => prev.filter((entry) => entry.cardId !== termItem.cardId));
+        setMatchingDefinitions((prev) => prev.filter((entry) => entry.cardId !== definitionItem.cardId));
+        setMatchingSelections({ term: null, definition: null });
+      } else {
+        if (mismatchTimeoutRef.current) {
+          window.clearTimeout(mismatchTimeoutRef.current);
+          mismatchTimeoutRef.current = null;
+        }
+        const timestamp = Date.now();
+        setMatchingIncorrect({ term: termItem.cardId, definition: definitionItem.cardId, key: timestamp });
+        setMatchingSelections({ term: null, definition: null });
+        mismatchTimeoutRef.current = window.setTimeout(() => {
+          clearMismatchFeedback();
+        }, 450);
+      }
+    },
+    [clearMismatchFeedback],
+  );
+
+  const handleTermSelect = useCallback(
+    (item) => {
+      if (matchingIncorrect) clearMismatchFeedback();
+      const alreadySelected = matchingSelections.term?.cardId === item.cardId;
+
+      if (alreadySelected) {
+        setMatchingSelections((prev) => ({ ...prev, term: null }));
+        return;
+      }
+
+      if (matchingSelections.definition) {
+        resolveMatchAttempt(item, matchingSelections.definition);
+      } else {
+        setMatchingSelections((prev) => ({ ...prev, term: item }));
+      }
+    },
+    [clearMismatchFeedback, matchingIncorrect, matchingSelections, resolveMatchAttempt],
+  );
+
+  const handleDefinitionSelect = useCallback(
+    (item) => {
+      if (matchingIncorrect) clearMismatchFeedback();
+      const alreadySelected = matchingSelections.definition?.cardId === item.cardId;
+
+      if (alreadySelected) {
+        setMatchingSelections((prev) => ({ ...prev, definition: null }));
+        return;
+      }
+
+      if (matchingSelections.term) {
+        resolveMatchAttempt(matchingSelections.term, item);
+      } else {
+        setMatchingSelections((prev) => ({ ...prev, definition: item }));
+      }
+    },
+    [clearMismatchFeedback, matchingIncorrect, matchingSelections, resolveMatchAttempt],
+  );
 
   const subtitle = useMemo(() => {
     if (!setData) return '';
@@ -143,6 +270,93 @@ export default function FlashcardDetailPage() {
               <p className="mt-1">{setData.description}</p>
             </div>
           ) : null}
+
+          <div className="card p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-base font-semibold text-neutral-900">Matching game</p>
+                <p className="text-sm text-neutral-500">Pair each term with its definition to clear the board.</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={startMatchingGame}
+                  disabled={!validMatchingCards.length}
+                >
+                  {matchingStarted ? 'Reset game' : 'Start game'}
+                </button>
+              </div>
+            </div>
+
+            {!validMatchingCards.length ? (
+              <p className="mt-4 text-sm text-neutral-500">
+                Add terms and definitions to this set to unlock the matching game.
+              </p>
+            ) : null}
+
+            {matchingStarted && validMatchingCards.length ? (
+              <div className="mt-4 space-y-4">
+                {matchingTerms.length === 0 && matchingDefinitions.length === 0 ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                    All matches found! Great job.
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Terms</p>
+                        <ul className="space-y-2">
+                          {matchingTerms.map((item) => {
+                            const isSelected = matchingSelections.term?.cardId === item.cardId;
+                            const isError = matchingIncorrect?.term === item.cardId;
+                            return (
+                              <li key={`term-${item.cardId}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleTermSelect(item)}
+                                  className={`group w-full rounded-xl border bg-white p-4 text-left text-sm transition focus:outline-none ${
+                                    isSelected ? 'border-neutral-900 bg-neutral-900/5 ring-2 ring-neutral-900/60' : 'border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50'
+                                  } ${isError ? 'border-red-400 bg-red-50 match-shake' : ''}`}
+                                  disabled={!!matchingIncorrect && !isError}
+                                >
+                                  <span className="block font-medium text-neutral-900">{item.text}</span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Definitions</p>
+                        <ul className="space-y-2">
+                          {matchingDefinitions.map((item) => {
+                            const isSelected = matchingSelections.definition?.cardId === item.cardId;
+                            const isError = matchingIncorrect?.definition === item.cardId;
+                            return (
+                              <li key={`definition-${item.cardId}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDefinitionSelect(item)}
+                                  className={`group w-full rounded-xl border bg-white p-4 text-left text-sm transition focus:outline-none ${
+                                    isSelected ? 'border-neutral-900 bg-neutral-900/5 ring-2 ring-neutral-900/60' : 'border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50'
+                                  } ${isError ? 'border-red-400 bg-red-50 match-shake' : ''}`}
+                                  disabled={!!matchingIncorrect && !isError}
+                                >
+                                  <span className="block text-neutral-700">{item.text}</span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    </div>
+                    <p className="text-xs text-neutral-500">Pairs remaining: {matchingTerms.length}</p>
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <aside className="space-y-3">
