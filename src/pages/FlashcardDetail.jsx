@@ -83,6 +83,11 @@ export default function FlashcardDetailPage() {
     setFlipped(false);
   }, [total]);
 
+  const handleFlipToggle = useCallback(() => {
+    if (!total) return;
+    setFlipped((state) => !state);
+  }, [total]);
+
   const shuffle = () => {
     if (!total) return;
     setCards((prev) => shuffleArray(prev));
@@ -96,12 +101,12 @@ export default function FlashcardDetailPage() {
       if (event.key === 'ArrowRight') goNext();
       if (event.key === ' ') {
         event.preventDefault();
-        setFlipped((state) => !state);
+        handleFlipToggle();
       }
     };
     window.addEventListener('keydown', listener);
     return () => window.removeEventListener('keydown', listener);
-  }, [goPrev, goNext]);
+  }, [goPrev, goNext, handleFlipToggle]);
 
   useEffect(() => {
     setMatchingStarted(false);
@@ -212,6 +217,16 @@ export default function FlashcardDetailPage() {
     return `${count} card${count === 1 ? '' : 's'}`;
   }, [setData, total]);
 
+  const handleCardKeyDown = useCallback(
+    (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        handleFlipToggle();
+      }
+    },
+    [handleFlipToggle],
+  );
+
   if (loading) {
     return (
       <Page title="Loading set" subtitle="Please wait">
@@ -245,23 +260,60 @@ export default function FlashcardDetailPage() {
       <div className="grid gap-6 lg:grid-cols-[1fr,320px]">
         <div className="space-y-4">
           <div
-            className="card relative flex min-h-[16rem] cursor-pointer select-none flex-col items-center justify-center gap-4 p-10 text-center transition hover:shadow-lg"
-            onClick={() => setFlipped((state) => !state)}
+            className="flashcard-container cursor-pointer select-none text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-500"
+            onClick={handleFlipToggle}
+            onKeyDown={handleCardKeyDown}
+            role="button"
+            tabIndex={0}
+            aria-pressed={flipped}
           >
             {current ? (
-              <>
-                <div className="text-2xl font-semibold leading-snug text-neutral-900">
-                  {flipped
-                    ? current.definition || <span className="text-base text-neutral-500">(no definition)</span>
-                    : current.term || <span className="text-base text-neutral-500">(no term)</span>}
+              <div className={`flashcard-card${flipped ? ' is-flipped' : ''}`}>
+                <div className="flashcard-face flashcard-face-front">
+                  <div className="flashcard-face-content">
+                    <div className="flashcard-text">
+                      {current.term || <span className="flashcard-text-empty">(no term)</span>}
+                    </div>
+                  </div>
+                  <div className="text-xs uppercase tracking-wide text-neutral-400">
+                    Term | Card {index + 1} of {total}
+                  </div>
                 </div>
-                <div className="text-xs uppercase tracking-wide text-neutral-400">
-                  {flipped ? 'Definition' : 'Term'} • Card {index + 1} of {total}
+                <div className="flashcard-face flashcard-face-back">
+                  <div className="flashcard-face-content">
+                    <div className="flashcard-text">
+                      {current.definition || <span className="flashcard-text-empty">(no definition)</span>}
+                    </div>
+                  </div>
+                  <div className="text-xs uppercase tracking-wide text-neutral-400">
+                    Definition | Card {index + 1} of {total}
+                  </div>
                 </div>
-              </>
+              </div>
             ) : (
-              <div className="text-sm text-neutral-600">No cards in this set yet.</div>
+              <div className="flashcard-empty">
+                No cards in this set yet.
+              </div>
             )}
+          </div>
+
+          <div className="card p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+                <button type="button" onClick={goPrev} className="btn-outline w-full sm:w-auto" disabled={!total}>
+                  Previous
+                </button>
+                <button type="button" onClick={goNext} className="btn-primary w-full sm:w-auto" disabled={!total}>
+                  Next
+                </button>
+                <button type="button" onClick={shuffle} className="btn-ghost w-full sm:w-auto" disabled={!total}>
+                  Shuffle cards
+                </button>
+              </div>
+              <p className="text-xs text-neutral-500 md:text-right">
+                Use arrow keys to navigate, spacebar to flip.
+              </p>
+            </div>
           </div>
 
           {setData?.description ? (
@@ -360,19 +412,6 @@ export default function FlashcardDetailPage() {
         </div>
 
         <aside className="space-y-3">
-          <div className="card p-4 space-y-3 text-sm">
-            <button type="button" onClick={goPrev} className="btn-outline w-full" disabled={!total}>
-              Previous
-            </button>
-            <button type="button" onClick={goNext} className="btn-primary w-full" disabled={!total}>
-              Next
-            </button>
-            <button type="button" onClick={shuffle} className="btn-ghost w-full" disabled={!total}>
-              Shuffle cards
-            </button>
-            <p className="text-xs text-neutral-500">Use ← → keys to navigate, spacebar to flip.</p>
-          </div>
-
           {cards.length ? (
             <div className="card max-h-[320px] overflow-y-auto p-3 text-sm">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Quick navigator</p>
