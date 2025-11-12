@@ -25,11 +25,10 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// IMPORTANT: Register materials route BEFORE express.json()
-// because it uses multer for file uploads (multipart/form-data)
+
 app.use('/materials', materialsRoutes);
 
-// Now apply JSON parser for other routes
+
 app.use(express.json({ limit: '50mb' }));
 
 app.get('/health', (req, res) => {
@@ -47,7 +46,7 @@ app.use((req, res) => {
   res.status(404).json({ message: 'Not found.' });
 });
 
-// Error handling middleware - must be after all routes
+
 app.use((err, req, res, next) => {
   console.error('Error handler caught:', err);
   
