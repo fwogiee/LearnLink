@@ -1,7 +1,6 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 const MAX_TEXT_LENGTH = 60000;
-const CHUNK_SIZE = 6000;
 
 let cachedClient;
 let cachedKey = '';
@@ -10,18 +9,10 @@ function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
   if (!cachedClient || cachedKey !== apiKey) {
-    cachedClient = new GoogleGenerativeAI(apiKey);
+    cachedClient = new GoogleGenAI({ apiKey });
     cachedKey = apiKey;
   }
   return cachedClient;
-}
-
-function chunkText(text, size = CHUNK_SIZE) {
-  const chunks = [];
-  for (let index = 0; index < text.length; index += size) {
-    chunks.push(text.slice(index, index + size));
-  }
-  return chunks;
 }
 
 async function runGemini(instruction, text, { temperature = 0.3, maxTokens = 800, responseMimeType } = {}) {
@@ -29,30 +20,32 @@ async function runGemini(instruction, text, { temperature = 0.3, maxTokens = 800
   if (!client) return null;
 
   try {
-    const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-    const model = client.getGenerativeModel({ model: modelName });
+    const modelName = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
     const normalized = (text || '').replace(/\r\n?/g, '\n').trim().slice(0, MAX_TEXT_LENGTH);
-    const parts = [{ text: instruction }];
-    const segments = chunkText(normalized);
-    if (segments.length === 0) {
-      parts.push({ text: '(No content provided)' });
-    } else {
-      segments.forEach((segment, index) => {
-        parts.push({ text: `Section ${index + 1}:\n${segment}` });
-      });
+    
+    // Combine instruction and content
+    const prompt = normalized 
+      ? `${instruction}\n\nContent:\n${normalized}`
+      : `${instruction}\n\n(No content provided)`;
+
+    const config = {
+      temperature,
+      maxOutputTokens: maxTokens,
+    };
+
+    if (responseMimeType) {
+      config.responseMimeType = responseMimeType;
     }
 
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts }],
-      generationConfig: {
-        temperature,
-        maxOutputTokens: maxTokens,
-        responseMimeType,
-      },
+    // Modern SDK call - ai.models.generateContent()
+    const response = await client.models.generateContent({
+      model: modelName,
+      contents: prompt,
+      config,
     });
 
-    const textResponse = result?.response?.text?.();
-    return typeof textResponse === 'string' ? textResponse.trim() : null;
+    // Response text is a property, not a method
+    return typeof response.text === 'string' ? response.text.trim() : null;
   } catch (error) {
     console.warn('Gemini request failed', error);
     return null;

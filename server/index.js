@@ -19,17 +19,13 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: false }));
 app.use(morgan('dev'));
 
+app.use(express.json({ limit: '50mb' }));
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-
-
-app.use('/materials', materialsRoutes);
-
-
-app.use(express.json({ limit: '50mb' }));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -40,6 +36,7 @@ app.use('/sets', setsRoutes);
 app.use('/quizzes', quizzesRoutes);
 app.use('/ai', aiRoutes);
 app.use('/admin', adminRoutes);
+app.use('/materials', materialsRoutes);
 app.use('/uploads', express.static(uploadsDir));
 
 app.use((req, res) => {
