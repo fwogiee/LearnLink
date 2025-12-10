@@ -84,6 +84,16 @@ export default function DashboardPage() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  const deleteSet = async (id) => {
+    if (!window.confirm('Delete this set? This action cannot be undone.')) return;
+    try {
+      await http(`/sets/${id}`, { method: 'DELETE' });
+      setSets((prev) => prev.filter((set) => set._id !== id));
+    } catch (err) {
+      window.alert(err.message || 'Failed to delete set.');
+    }
+  };
+
   useEffect(() => {
     if (!suggestionsOpen) return;
     const handleClick = (event) => {
@@ -178,7 +188,16 @@ export default function DashboardPage() {
                       <p className="text-xs text-neutral-600 line-clamp-2">{set.description}</p>
                     ) : null}
                   </div>
-                  <span className="tag">{set.cardsCount ?? set.cards?.length ?? 0} cards</span>
+                  <div className="flex items-center gap-2">
+                    <span className="tag">{set.cardsCount ?? set.cards?.length ?? 0} cards</span>
+                    <button
+                      type="button"
+                      className="btn-ghost text-xs text-red-600"
+                      onClick={() => deleteSet(set._id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-4 flex gap-2">
                   <Link to={`/flashcards/${set._id}`} className="btn-outline flex-1 text-center text-sm">

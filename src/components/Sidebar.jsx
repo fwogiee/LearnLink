@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { to: '/quizzes', label: 'Quizzes', icon: ClipboardIcon },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ className = '' }) {
   const { role, logout, username } = useAuth();
   const navigate = useNavigate();
 
@@ -23,7 +23,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="group fixed left-0 top-0 z-40 flex h-screen w-16 flex-col overflow-hidden border-r border-neutral-200 bg-white transition-[width] duration-300 hover:w-60 lg:w-60">
+    <aside className={`group fixed left-0 top-0 z-40 flex h-screen w-16 flex-col overflow-hidden border-r border-neutral-200 bg-white transition-[width] duration-300 hover:w-60 ${className}`}>
       <div className="flex h-full flex-col">
         <div className="flex items-center gap-3 px-3 py-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-900 text-sm font-semibold text-white">LL</div>
