@@ -4,6 +4,7 @@ import Page from '../components/Page.jsx';
 import StatusMessage from '../components/StatusMessage.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import { API_BASE, authHeaders, http } from '../lib/api.js';
+import { useClassManagement } from '../hooks/useClassManagement.js';
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
@@ -33,6 +34,12 @@ export default function LearningMaterialsPage() {
 
   const [uploadState, setUploadState] = useState({ uploading: false, error: '', success: '' });
   const [analysisState, setAnalysisState] = useState({ loading: '', error: '', success: null });
+
+  const { classes, selectedClass, setSelectedClass, addNewClass, removeClassLocally } = useClassManagement(materials);
+  const [newClassName, setNewClassName] = useState('');
+  const [newClassColor, setNewClassColor] = useState('#3b82f6');
+  const [showNewClassForm, setShowNewClassForm] = useState(false);
+  const [collapsedClasses, setCollapsedClasses] = useState(new Set());
 
   useEffect(() => {
     let alive = true;
@@ -101,6 +108,15 @@ export default function LearningMaterialsPage() {
     const formData = new FormData();
     formData.append('material', file);
 
+    // Add class info if selected
+    if (selectedClass) {
+      const classInfo = classes.find((c) => c.name === selectedClass);
+      if (classInfo) {
+        formData.append('className', classInfo.name);
+        formData.append('classColor', classInfo.color);
+      }
+    }
+
     setUploadState({ uploading: true, error: '', success: '' });
 
     try {
@@ -125,6 +141,55 @@ export default function LearningMaterialsPage() {
     } catch (error) {
       setUploadState({ uploading: false, error: error.message || 'Upload failed.', success: '' });
     }
+  };
+
+  const handleCreateClass = () => {
+    try {
+      const className = addNewClass(newClassName.trim(), newClassColor);
+      setNewClassName('');
+      setNewClassColor('#3b82f6');
+      setShowNewClassForm(false);
+      setUploadState({ uploading: false, error: '', success: `Class "${className}" created.` });
+    } catch (error) {
+      setUploadState({ uploading: false, error: error.message, success: '' });
+    }
+  };
+
+  const handleDeleteClass = async (className) => {
+    const materialsInClass = materials.filter((m) => m.className === className);
+    if (materialsInClass.length > 0) {
+      const confirmation = window.confirm(
+        `This class contains ${materialsInClass.length} file(s). Delete all files in this class?`,
+      );
+      if (!confirmation) return;
+
+      // Delete all materials in the class
+      try {
+        const deletePromises = materialsInClass.map((m) =>
+          http(`/materials/${m.id}`, { method: 'DELETE' })
+        );
+        const results = await Promise.allSettled(deletePromises);
+
+        // Check if any deletions failed
+        const failures = results.filter((r) => r.status === 'rejected');
+        if (failures.length > 0) {
+          console.warn(`Failed to delete ${failures.length} material(s)`);
+        }
+
+        setMaterials((prev) => prev.filter((m) => m.className !== className));
+        if (materialsInClass.some((m) => m.id === selectedId)) {
+          setSelectedId('');
+        }
+      } catch (error) {
+        setListError(error.message || 'Failed to delete materials.');
+        return;
+      }
+    } else {
+      const confirmation = window.confirm(`Delete class "${className}"?`);
+      if (!confirmation) return;
+    }
+
+    removeClassLocally(className);
   };
 
   const handleDelete = async (materialId) => {
@@ -196,6 +261,30 @@ export default function LearningMaterialsPage() {
 
   const analyzing = Boolean(analysisState.loading);
 
+  const materialsByClass = useMemo(() => {
+    const grouped = {};
+    materials.forEach((material) => {
+      const className = material.className || 'Uncategorized';
+      if (!grouped[className]) {
+        grouped[className] = [];
+      }
+      grouped[className].push(material);
+    });
+    return grouped;
+  }, [materials]);
+
+  const toggleClassCollapse = (className) => {
+    setCollapsedClasses((prev) => {
+      const next = new Set(prev);
+      if (next.has(className)) {
+        next.delete(className);
+      } else {
+        next.add(className);
+      }
+      return next;
+    });
+  };
+
   return (
     <Page
       title="Learning Materials"
@@ -238,6 +327,79 @@ export default function LearningMaterialsPage() {
           <section className="card space-y-4 p-5">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Upload material</h2>
             <form onSubmit={handleUpload} className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-neutral-700">
+                  Select Class <span className="text-neutral-400">(optional)</span>
+                </label>
+                {!showNewClassForm ? (
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedClass}
+                      onChange={(e) => setSelectedClass(e.target.value)}
+                      className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                    >
+                      <option value="">-- None (Uncategorized) --</option>
+                      {classes.map((cls) => (
+                        <option key={cls.name} value={cls.name}>
+                          {cls.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewClassForm(true)}
+                      className="btn-outline text-sm"
+                      title="Create new class"
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2 rounded-lg border border-neutral-300 p-3">
+                    <input
+                      type="text"
+                      placeholder="Class name"
+                      value={newClassName}
+                      onChange={(e) => setNewClassName(e.target.value)}
+                      className="w-full rounded border border-neutral-300 px-2 py-1 text-sm"
+                      maxLength={50}
+                    />
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-neutral-600">Color:</label>
+                      <input
+                        type="color"
+                        value={newClassColor}
+                        onChange={(e) => setNewClassColor(e.target.value)}
+                        className="h-8 w-16 cursor-pointer rounded border border-neutral-300"
+                      />
+                    </div>
+                    {newClassName.trim() && classes.some((c) => c.name.toLowerCase() === newClassName.trim().toLowerCase()) && (
+                      <p className="text-xs text-red-600">A class with this name already exists.</p>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleCreateClass}
+                        className="btn-primary flex-1 text-xs"
+                        disabled={!newClassName.trim() || classes.some((c) => c.name.toLowerCase() === newClassName.trim().toLowerCase())}
+                      >
+                        Create
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowNewClassForm(false);
+                          setNewClassName('');
+                          setNewClassColor('#3b82f6');
+                        }}
+                        className="btn-ghost flex-1 text-xs"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <input
                 type="file"
                 name="material"
@@ -267,30 +429,65 @@ export default function LearningMaterialsPage() {
                 Nothing here yet. Upload a PDF or note to get started.
               </p>
             ) : (
-              <ul className="mt-3 space-y-2">
-                {materials.map((material) => {
-                  const isActive = material.id === selectedId;
+              <div className="mt-3 space-y-2">
+                {Object.entries(materialsByClass).map(([className, classMaterials]) => {
+                  const classColor = classMaterials[0]?.classColor || '#3b82f6';
+                  const isCollapsed = collapsedClasses.has(className);
                   return (
-                    <li key={material.id}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedId(material.id)}
-                        className={[
-                          'w-full rounded-lg border px-3 py-2 text-left text-sm transition',
-                          isActive
-                            ? 'border-neutral-900 bg-neutral-900 text-white'
-                            : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400 hover:bg-neutral-50',
-                        ].join(' ')}
-                      >
-                        <div className="font-medium">{material.originalName}</div>
-                        <div className={isActive ? 'text-xs text-neutral-200' : 'text-xs text-neutral-500'}>
-                          {formatBytes(material.size)} | {dateFormatter.format(new Date(material.createdAt))}
-                        </div>
-                      </button>
-                    </li>
+                    <div key={className} className="rounded-lg border border-neutral-200">
+                      <div className="flex items-center justify-between gap-2 p-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleClassCollapse(className)}
+                          className="flex flex-1 items-center gap-2 text-left text-sm font-medium text-neutral-700 hover:text-neutral-900"
+                        >
+                          <span
+                            className="h-3 w-3 rounded-full"
+                            style={{ backgroundColor: classColor }}
+                          />
+                          <span>{className}</span>
+                          <span className="text-xs text-neutral-500">({classMaterials.length})</span>
+                          <span className="ml-auto text-neutral-400">{isCollapsed ? '▶' : '▼'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteClass(className)}
+                          className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                          title="Delete class"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      {!isCollapsed && (
+                        <ul className="space-y-1 p-2 pt-0">
+                          {classMaterials.map((material) => {
+                            const isActive = material.id === selectedId;
+                            return (
+                              <li key={material.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedId(material.id)}
+                                  className={[
+                                    'w-full rounded-lg border px-3 py-2 text-left text-sm transition',
+                                    isActive
+                                      ? 'border-neutral-900 bg-neutral-900 text-white'
+                                      : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400 hover:bg-neutral-50',
+                                  ].join(' ')}
+                                >
+                                  <div className="font-medium">{material.originalName}</div>
+                                  <div className={isActive ? 'text-xs text-neutral-200' : 'text-xs text-neutral-500'}>
+                                    {formatBytes(material.size)} | {dateFormatter.format(new Date(material.createdAt))}
+                                  </div>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
                   );
                 })}
-              </ul>
+              </div>
             )}
           </section>
         </aside>

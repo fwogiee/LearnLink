@@ -68,6 +68,12 @@ router.post('/upload', requireAuth, (req, res) => {
     }
 
     const { originalname, filename, mimetype, size, path: filePath } = req.file;
+    const { className, classColor } = req.body;
+
+    // Validate classColor if provided
+    if (classColor && !/^#[0-9A-Fa-f]{6}$/.test(classColor)) {
+      return res.status(400).json({ message: 'Invalid color format. Use hex format (#RRGGBB).' });
+    }
 
     try {
       const content = await extractFileContent(filePath, mimetype);
@@ -79,6 +85,8 @@ router.post('/upload', requireAuth, (req, res) => {
         size,
         content,
         user: req.user._id,
+        className: className?.trim() || 'Uncategorized',
+        classColor: classColor || '#3b82f6',
       });
 
       return res.status(201).json(summarizeMaterial(material));
@@ -272,6 +280,8 @@ function summarizeMaterial(material) {
     hasSummary: Boolean(material.summary),
     flashcardSetId: material.flashcardSet ? material.flashcardSet.toString() : null,
     quizId: material.quiz ? material.quiz.toString() : null,
+    className: material.className || '',
+    classColor: material.classColor || '#3b82f6',
   };
 }
 
