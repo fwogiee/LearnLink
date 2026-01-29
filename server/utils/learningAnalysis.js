@@ -22,11 +22,11 @@ async function runGemini(instruction, text, { temperature = 0.3, maxTokens = 800
   try {
     const modelName = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
     const normalized = (text || '').replace(/\r\n?/g, '\n').trim().slice(0, MAX_TEXT_LENGTH);
-    
+
     // Combine instruction and content
-    const prompt = normalized 
+    const prompt = normalized
       ? `${instruction}\n\nContent:\n${normalized}`
-      : `${instruction}\n\n(No content provided)`;
+      : instruction;
 
     const config = {
       temperature,
@@ -37,14 +37,14 @@ async function runGemini(instruction, text, { temperature = 0.3, maxTokens = 800
       config.responseMimeType = responseMimeType;
     }
 
-    // Modern SDK call - ai.models.generateContent()
+    // Correct SDK call structure
     const response = await client.models.generateContent({
       model: modelName,
       contents: prompt,
-      config,
+      ...config,
     });
 
-    // Response text is a property, not a method
+    // Response text is a property
     return typeof response.text === 'string' ? response.text.trim() : null;
   } catch (error) {
     console.warn('Gemini request failed', error);
@@ -87,6 +87,30 @@ export async function createFlashcardsFromText(text, count = 6) {
 
   if (parsed && parsed.length) return parsed;
   return fallbackFlashcards(sourceText, requested);
+}
+
+export async function createFlashcardsFromTopic(topic, count = 5) {
+  const requested = Math.min(Math.max(Number(count) || 5, 3), 20);
+  const topicText = (topic || '').trim();
+  if (!topicText) return fallbackFlashcards('', requested);
+
+  const response = await runGemini(
+    `Create ${requested} study flashcards for the topic "${topicText}". Reply strictly as JSON array. Each item should have "term", "definition", and "example" fields with concise strings.`,
+    '',
+    { temperature: 0.3, maxTokens: 900, responseMimeType: 'application/json' },
+  );
+
+  const parsed = safeParseJsonArray(response)
+    ?.map((card) => ({
+      term: String(card.term || card.front || '').trim().slice(0, 140),
+      definition: String(card.definition || card.back || '').trim().slice(0, 300),
+      example: String(card.example || '').trim().slice(0, 200),
+    }))
+    .filter((card) => card.term && card.definition)
+    .slice(0, requested);
+
+  if (parsed && parsed.length) return parsed;
+  return fallbackFlashcards(topicText, requested);
 }
 
 export async function createQuizFromText(text, count = 5) {
