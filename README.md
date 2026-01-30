@@ -6,10 +6,8 @@ A rebuilt LearnLink front end powered by React, Vite, and Tailwind CSS. This sin
 
 ```bash
 npm install
-# Terminal 1 – backend API
-npm run server
 
-# Terminal 2 – Vite client
+# Start both Frontend and Backend concurrently
 npm run dev
 ```
 
@@ -32,8 +30,7 @@ MONGO_URI=your-mongodb-connection-string
 JWT_SECRET=super-secret
 PORT=4000
 CLIENT_ORIGIN=http://localhost:5173
-TOGETHER_AI_API=optional-ai-key
-TOGETHER_AI_MODEL=optional-model-override
+GEMINI_API_KEY=your-google-gemini-key
 ```
 
 Only variables prefixed with `VITE_` are exposed to the browser; everything else stays on the server.
@@ -45,6 +42,7 @@ Only variables prefixed with `VITE_` are exposed to the browser; everything else
 - `/flashcards` – manage sets, duplicate, delete, or jump into study mode.
 - `/flashcards/new` – full React flashcard builder (supports duplication or editing via query params).
 - `/flashcards/:id` – interactive card viewer with keyboard navigation and shuffle.
+- `/materials` – upload PDFs/notes and organize them into color-coded class folders.
 - `/ai-flashcards` – call the `/ai/flashcards` endpoint to draft study cards.
 - `/quizzes` – create multiple‑choice quizzes and manage existing ones.
 - `/quizzes/:id/play` – lightweight quiz player that scores client side.
