@@ -3,40 +3,40 @@ import { requireAuth } from '../middleware/auth.js';
 import LearningMaterial from '../models/LearningMaterial.js';
 import MaterialChunk from '../models/MaterialChunk.js';
 import { embedTexts, ragEmbeddingDefaults } from '../utils/ragEmbeddings.js';
+import { generateRagAnswer } from '../utils/ragGeneration.js';
 
 const router = Router();
 
 const DEFAULT_TOP_K = 6;
 const DEFAULT_NUM_CANDIDATES = 120;
+const MAX_TOP_K = 20;
 
-router.post('/search', requireAuth, async (req, res) => {
-  const { materialId, query, topK, className } = req.body || {};
+function buildContextBlocks(results) {
+  return results
+    .map((chunk, index) => {
+      const sourceLines = [
+        `Source ${index + 1}`,
+        `File: ${chunk.sourceFile || 'Unknown'}`,
+        `Class: ${chunk.className || 'Uncategorized'}`,
+      ];
 
-  if (!query?.trim()) {
-    return res.status(400).json({ message: 'Query is required.' });
-  }
+      if (chunk.section) sourceLines.push(`Section: ${chunk.section}`);
+      if (chunk.page != null) sourceLines.push(`Page: ${chunk.page}`);
 
-  const searchMaterialId = materialId?.trim();
-  let material = null;
-  if (searchMaterialId) {
-    material = await LearningMaterial.findById(searchMaterialId).select('_id user className ragStatus');
-    if (!material) {
-      return res.status(404).json({ message: 'Material not found.' });
-    }
+      return `${sourceLines.join('\n')}\nText:\n${chunk.text}`.trim();
+    })
+    .join('\n\n---\n\n');
+}
 
-    if (material.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'You are not allowed to search this material.' });
-    }
-  }
-
+async function runVectorSearch({ userId, query, materialId, className, topK }) {
   const [queryEmbedding] = await embedTexts([query], ragEmbeddingDefaults);
-  const limit = Math.min(Number(topK) || DEFAULT_TOP_K, 20);
+  const limit = Math.min(Number(topK) || DEFAULT_TOP_K, MAX_TOP_K);
   const filter = {
-    user: req.user._id,
+    user: userId,
   };
 
-  if (material) {
-    filter.material = material._id;
+  if (materialId) {
+    filter.material = materialId;
   }
 
   const requestedClass = className?.trim();
@@ -70,11 +70,100 @@ router.post('/search', requireAuth, async (req, res) => {
     },
   ];
 
-  const results = await MaterialChunk.aggregate(pipeline);
+  return MaterialChunk.aggregate(pipeline);
+}
+
+router.post('/search', requireAuth, async (req, res) => {
+  const { materialId, query, topK, className } = req.body || {};
+
+  if (!query?.trim()) {
+    return res.status(400).json({ message: 'Query is required.' });
+  }
+
+  const searchMaterialId = materialId?.trim();
+  let material = null;
+  if (searchMaterialId) {
+    material = await LearningMaterial.findById(searchMaterialId).select('_id user className ragStatus');
+    if (!material) {
+      return res.status(404).json({ message: 'Material not found.' });
+    }
+
+    if (material.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You are not allowed to search this material.' });
+    }
+  }
+
+  const results = await runVectorSearch({
+    userId: req.user._id,
+    query,
+    materialId: material?._id,
+    className,
+    topK,
+  });
 
   return res.json({
     query,
     results,
+  });
+});
+
+router.post('/answer', requireAuth, async (req, res) => {
+  const { materialId, query, topK, className } = req.body || {};
+
+  if (!query?.trim()) {
+    return res.status(400).json({ message: 'Query is required.' });
+  }
+
+  const searchMaterialId = materialId?.trim();
+  let material = null;
+  if (searchMaterialId) {
+    material = await LearningMaterial.findById(searchMaterialId).select('_id user className ragStatus');
+    if (!material) {
+      return res.status(404).json({ message: 'Material not found.' });
+    }
+
+    if (material.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You are not allowed to search this material.' });
+    }
+  }
+
+  const results = await runVectorSearch({
+    userId: req.user._id,
+    query,
+    materialId: material?._id,
+    className,
+    topK,
+  });
+
+  if (!results.length) {
+    return res.json({
+      query,
+      answer: 'I do not have enough information in the provided materials to answer that.',
+      sources: [],
+    });
+  }
+
+  const context = buildContextBlocks(results);
+  const systemInstruction =
+    'You are a helpful study assistant. Use only the provided context. ' +
+    'If the answer is not in the context, say you do not have enough information.';
+  const prompt = `Question: ${query}\n\nContext:\n${context}\n\nAnswer in a concise paragraph.`;
+
+  const answer = await generateRagAnswer({ prompt, systemInstruction });
+
+  return res.json({
+    query,
+    answer,
+    sources: results.map((chunk) => ({
+      id: chunk._id,
+      material: chunk.material,
+      className: chunk.className,
+      sourceFile: chunk.sourceFile,
+      page: chunk.page ?? null,
+      section: chunk.section || '',
+      score: chunk.score,
+      metadata: chunk.metadata || {},
+    })),
   });
 });
 
