@@ -9,6 +9,7 @@ import FlashcardSet from '../models/FlashcardSet.js';
 import Quiz from '../models/Quiz.js';
 import LearningMaterial from '../models/LearningMaterial.js';
 import { requireAuth } from '../middleware/auth.js';
+import { indexMaterialInBackground } from '../utils/ragIndexing.js';
 import {
   summarizeMaterialText,
   createFlashcardsFromText,
@@ -87,8 +88,10 @@ router.post('/upload', requireAuth, (req, res) => {
         user: req.user._id,
         className: className?.trim() || 'Uncategorized',
         classColor: classColor || '#3b82f6',
+        ragStatus: 'indexing',
       });
 
+      indexMaterialInBackground(material._id);
       return res.status(201).json(summarizeMaterial(material));
     } catch (error) {
       console.error('Failed to process uploaded material', error);
@@ -282,6 +285,8 @@ function summarizeMaterial(material) {
     quizId: material.quiz ? material.quiz.toString() : null,
     className: material.className || '',
     classColor: material.classColor || '#3b82f6',
+    ragStatus: material.ragStatus || 'idle',
+    ragUpdatedAt: material.ragUpdatedAt ?? null,
   };
 }
 

@@ -14,6 +14,8 @@ const learningMaterialSchema = new Schema(
     flashcardSet: { type: Schema.Types.ObjectId, ref: 'FlashcardSet' },
     quiz: { type: Schema.Types.ObjectId, ref: 'Quiz' },
     analysisUpdatedAt: { type: Date },
+    ragStatus: { type: String, default: 'idle' },
+    ragUpdatedAt: { type: Date },
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     className: { type: String, default: 'Uncategorized' },
     classColor: { type: String, default: '#3b82f6' },
