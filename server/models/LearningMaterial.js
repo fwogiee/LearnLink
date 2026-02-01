@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import MaterialChunk from './MaterialChunk.js';
 
 const { Schema } = mongoose;
 
@@ -27,6 +28,36 @@ const learningMaterialSchema = new Schema(
 
 learningMaterialSchema.virtual('fileUrl').get(function fileUrlGetter() {
   return `/uploads/${this.storedName}`;
+});
+
+async function deleteChunksForFilter(filter, model) {
+  if (filter?._id) {
+    await MaterialChunk.deleteMany({ material: filter._id });
+    return;
+  }
+
+  const doc = await model.findOne(filter).select('_id');
+  if (doc?._id) {
+    await MaterialChunk.deleteMany({ material: doc._id });
+  }
+}
+
+learningMaterialSchema.pre('deleteOne', { document: false, query: true }, async function preDeleteOne(next) {
+  try {
+    await deleteChunksForFilter(this.getFilter(), this.model);
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+learningMaterialSchema.pre('findOneAndDelete', { document: false, query: true }, async function preFindOneAndDelete(next) {
+  try {
+    await deleteChunksForFilter(this.getFilter(), this.model);
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default mongoose.model('LearningMaterial', learningMaterialSchema);
