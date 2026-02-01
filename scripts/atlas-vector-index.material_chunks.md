@@ -1,6 +1,6 @@
 # Atlas Vector Search Index: material_chunks
 
-Update `numDimensions` 
+Update `numDimensions` if you change the embedding output dimensionality.
 ```json
 {
   "name": "material_chunks_vector_index",
