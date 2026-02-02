@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 
 const DEFAULT_MODEL = 'gemini-3-flash-preview';
-const DEFAULT_MAX_TOKENS = 512;
+const DEFAULT_MAX_TOKENS = 1024;
 const DEFAULT_TEMPERATURE = 0.2;
 
 let client;
@@ -23,6 +23,13 @@ function extractTextFromResponse(response) {
   return textParts.join('').trim();
 }
 
+function logFinishReason(response) {
+  const reason = response?.candidates?.[0]?.finishReason;
+  if (reason) {
+    console.log(`RAG finishReason: ${reason}`);
+  }
+}
+
 export async function generateRagAnswer({ prompt, systemInstruction, model } = {}) {
   if (!prompt?.trim()) {
     throw new Error('Prompt is required.');
@@ -39,6 +46,7 @@ export async function generateRagAnswer({ prompt, systemInstruction, model } = {
     },
   });
 
+  logFinishReason(response);
   return extractTextFromResponse(response);
 }
 

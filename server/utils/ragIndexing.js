@@ -56,7 +56,15 @@ export async function indexMaterialChunks(materialId) {
 }
 
 export function indexMaterialInBackground(materialId) {
-  return indexMaterialChunks(materialId).catch((error) => {
+  return indexMaterialChunks(materialId).catch(async (error) => {
     console.error('RAG indexing failed', error);
+    try {
+      await LearningMaterial.updateOne(
+        { _id: materialId },
+        { $set: { ragStatus: 'failed', ragUpdatedAt: new Date() } },
+      );
+    } catch (updateError) {
+      console.error('Failed to update RAG status after indexing error', updateError);
+    }
   });
 }
