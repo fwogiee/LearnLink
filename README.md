@@ -43,6 +43,8 @@ Only variables prefixed with `VITE_` are exposed to the browser; everything else
 - `/flashcards/new` – full React flashcard builder (supports duplication or editing via query params).
 - `/flashcards/:id` – interactive card viewer with keyboard navigation and shuffle.
 - `/materials` – upload PDFs/notes and organize them into color-coded class folders.
+- `/rag/search` – retrieve top-k chunks from indexed materials using Atlas Vector Search.
+- `/rag/answer` – answer questions grounded in retrieved chunks (RAG).
 - `/ai-flashcards` – call the `/ai/flashcards` endpoint to draft study cards.
 - `/quizzes` – create multiple‑choice quizzes and manage existing ones.
 - `/quizzes/:id/play` – lightweight quiz player that scores client side.
@@ -53,6 +55,35 @@ Only variables prefixed with `VITE_` are exposed to the browser; everything else
 - Tailwind utility classes with shared component layers defined in `src/index.css` (`.card`, `.btn`, `.input`, etc.).
 - Sidebar-driven layout (`src/components/Layout.jsx`) with role-aware navigation.
 - Auth state and API headers handled via `AuthContext` and `src/lib/api.js`.
+
+## RAG (Atlas Vector Search)
+
+### Create the Vector Search index (Atlas UI)
+1. Open your Atlas cluster → **Search Indexes** → **Create Search Index**.
+2. Choose **Vector Search** and select the `materialchunks` collection.
+3. Paste the **definition only** (Atlas UI expects just this JSON):
+
+```json
+{
+  "fields": [
+    {
+      "type": "vector",
+      "path": "embedding",
+      "numDimensions": 768,
+      "similarity": "cosine"
+    },
+    { "type": "filter", "path": "user" },
+    { "type": "filter", "path": "material" },
+    { "type": "filter", "path": "className" }
+  ]
+}
+```
+
+4. Name the index `material_chunks_vector_index` (this must match the server code).
+
+### Notes
+- Atlas UI **does not** accept the full `{ name, type, definition }` object; that format is for code/CLI creation.
+- If you change embedding dimensions, update both the index and the server config.
 
 ## Next steps
 

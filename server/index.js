@@ -12,6 +12,7 @@ import quizzesRoutes from './routes/quizzes.js';
 import aiRoutes from './routes/ai.js';
 import adminRoutes from './routes/admin.js';
 import materialsRoutes from './routes/materials.js';
+import ragRoutes from './routes/rag.js';
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/quizzes', quizzesRoutes);
 app.use('/ai', aiRoutes);
 app.use('/admin', adminRoutes);
 app.use('/materials', materialsRoutes);
+app.use('/rag', ragRoutes);
 app.use('/uploads', express.static(uploadsDir));
 
 app.use((req, res) => {

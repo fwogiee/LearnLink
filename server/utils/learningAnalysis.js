@@ -41,7 +41,7 @@ async function runGemini(instruction, text, { temperature = 0.3, maxTokens = 800
     const response = await client.models.generateContent({
       model: modelName,
       contents: prompt,
-      ...config,
+      config,
     });
 
     // Response text is a property

@@ -34,6 +34,13 @@ export default function LearningMaterialsPage() {
 
   const [uploadState, setUploadState] = useState({ uploading: false, error: '', success: '' });
   const [analysisState, setAnalysisState] = useState({ loading: '', error: '', success: null });
+  const [ragState, setRagState] = useState({
+    question: '',
+    loading: false,
+    error: '',
+    answer: '',
+    sources: [],
+  });
 
   const { classes, selectedClass, setSelectedClass, addNewClass, removeClassLocally } = useClassManagement(materials);
   const [newClassName, setNewClassName] = useState('');
@@ -94,6 +101,7 @@ export default function LearningMaterialsPage() {
 
   useEffect(() => {
     setAnalysisState({ loading: '', error: '', success: null });
+    setRagState({ question: '', loading: false, error: '', answer: '', sources: [] });
   }, [selectedId]);
 
   const handleUpload = async (event) => {
@@ -251,6 +259,43 @@ export default function LearningMaterialsPage() {
       }
     } catch (error) {
       setAnalysisState({ loading: '', error: error.message || 'Failed to analyze material.', success: null });
+    }
+  };
+
+  const handleAskRag = async (event) => {
+    event.preventDefault();
+    if (!selectedId || ragState.loading) return;
+    const question = ragState.question.trim();
+    if (!question) {
+      setRagState((prev) => ({ ...prev, error: 'Enter a question to ask.', answer: '', sources: [] }));
+      return;
+    }
+
+    setRagState((prev) => ({ ...prev, loading: true, error: '', answer: '', sources: [] }));
+    try {
+      const payload = await http('/rag/answer', {
+        method: 'POST',
+        body: JSON.stringify({
+          materialId: selectedId,
+          query: question,
+          className: selected?.className,
+        }),
+      });
+
+      setRagState((prev) => ({
+        ...prev,
+        loading: false,
+        answer: payload?.answer || '',
+        sources: Array.isArray(payload?.sources) ? payload.sources : [],
+      }));
+    } catch (error) {
+      setRagState((prev) => ({
+        ...prev,
+        loading: false,
+        error: error.message || 'Failed to get an answer.',
+        answer: '',
+        sources: [],
+      }));
     }
   };
 
@@ -414,7 +459,7 @@ export default function LearningMaterialsPage() {
                 {uploadState.uploading ? 'Uploading...' : 'Upload'}
               </button>
               <p className="text-xs text-neutral-500">
-                PDF or text files up to 10MB. Text is extracted so you can skim and copy notes.
+                PDF or text files up to 50MB. Text is extracted so you can skim and copy notes.
               </p>
             </form>
           </section>
@@ -628,6 +673,74 @@ export default function LearningMaterialsPage() {
                     No summary yet. Click "Generate summary" to distill the key points from this material.
                   </p>
                 )}
+              </section>
+
+              <section className="mt-6 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Ask this material</h3>
+                  {ragState.loading ? <LoadingSpinner label="Thinking" /> : null}
+                </div>
+                <div className="rounded-lg border border-neutral-200 bg-white p-4">
+                  <form className="space-y-3" onSubmit={handleAskRag}>
+                    <label className="block text-xs font-medium text-neutral-600">
+                      Question
+                      <textarea
+                        className="mt-2 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                        rows={3}
+                        placeholder="Ask a question about this material..."
+                        value={ragState.question}
+                        onChange={(event) =>
+                          setRagState((prev) => ({ ...prev, question: event.target.value, error: '' }))
+                        }
+                      />
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                      <button type="submit" className="btn-primary text-sm" disabled={ragState.loading}>
+                        {ragState.loading ? 'Asking...' : 'Ask'}
+                      </button>
+                      <span>
+                        Index status:{' '}
+                        {selected.ragStatus === 'ready'
+                          ? 'Ready'
+                          : selected.ragStatus === 'indexing'
+                            ? 'Indexing...'
+                            : selected.ragStatus === 'failed'
+                              ? 'Failed'
+                              : 'Idle'}
+                      </span>
+                      {selected.ragUpdatedAt ? (
+                        <span>Updated {dateFormatter.format(new Date(selected.ragUpdatedAt))}</span>
+                      ) : null}
+                    </div>
+                  </form>
+
+                  {ragState.error ? (
+                    <p className="mt-3 text-xs text-red-600">{ragState.error}</p>
+                  ) : null}
+
+                  {ragState.answer ? (
+                    <article className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700">
+                      <pre className="whitespace-pre-wrap break-words">{ragState.answer}</pre>
+                    </article>
+                  ) : null}
+
+                  {ragState.sources.length ? (
+                    <div className="mt-3 text-xs text-neutral-500">
+                      <p className="font-medium text-neutral-700">Sources</p>
+                      <ul className="mt-2 space-y-2">
+                        {ragState.sources.map((source) => (
+                          <li key={source.id} className="rounded border border-neutral-200 bg-white p-2">
+                            <div className="font-semibold text-neutral-700">
+                              {source.sourceFile || 'Unknown'} {source.page != null ? `(p. ${source.page})` : ''}
+                            </div>
+                            <div>Score: {typeof source.score === 'number' ? source.score.toFixed(3) : source.score}</div>
+                            {source.section ? <div>Section: {source.section}</div> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
               </section>
             </>
           ) : null}

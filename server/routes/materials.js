@@ -9,6 +9,7 @@ import FlashcardSet from '../models/FlashcardSet.js';
 import Quiz from '../models/Quiz.js';
 import LearningMaterial from '../models/LearningMaterial.js';
 import { requireAuth } from '../middleware/auth.js';
+import { indexMaterialInBackground } from '../utils/ragIndexing.js';
 import {
   summarizeMaterialText,
   createFlashcardsFromText,
@@ -38,7 +39,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
   fileFilter: (req, file, cb) => {
     if (ALLOWED_TYPES.includes(file.mimetype)) {
       cb(null, true);
@@ -50,7 +51,7 @@ const upload = multer({
 
 function extractErrorMessage(error) {
   if (error instanceof multer.MulterError) {
-    if (error.code === 'LIMIT_FILE_SIZE') return 'File too large. Maximum size is 10MB.';
+    if (error.code === 'LIMIT_FILE_SIZE') return 'File too large. Maximum size is 50MB.';
     if (error.code === 'LIMIT_UNEXPECTED_FILE') return 'Unsupported file type. Please upload PDF or TXT files.';
     return error.message;
   }
@@ -87,8 +88,10 @@ router.post('/upload', requireAuth, (req, res) => {
         user: req.user._id,
         className: className?.trim() || 'Uncategorized',
         classColor: classColor || '#3b82f6',
+        ragStatus: 'indexing',
       });
 
+      indexMaterialInBackground(material._id);
       return res.status(201).json(summarizeMaterial(material));
     } catch (error) {
       console.error('Failed to process uploaded material', error);
@@ -282,6 +285,8 @@ function summarizeMaterial(material) {
     quizId: material.quiz ? material.quiz.toString() : null,
     className: material.className || '',
     classColor: material.classColor || '#3b82f6',
+    ragStatus: material.ragStatus || 'idle',
+    ragUpdatedAt: material.ragUpdatedAt ?? null,
   };
 }
 
