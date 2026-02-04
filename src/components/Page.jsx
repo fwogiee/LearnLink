@@ -11,7 +11,7 @@ export default function Page({ title, subtitle, actions, children }) {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/80 backdrop-blur">
+      <header className="sticky h-16 top-0 z-30 border-b border-neutral-200 bg-white/80 backdrop-blur">
         <div className="container-px flex h-16 items-center justify-between gap-4">
           <div>
             <h1 className="text-lg font-semibold text-neutral-900">{title}</h1>

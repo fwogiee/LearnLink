@@ -67,11 +67,23 @@
   .tag {
     @apply inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-600;
   }
+  .nav-link {
+    @apply flex h-9 w-full items-center gap-3 rounded-lg p-2 text-sm transition text-neutral-600 hover:bg-neutral-100;
+  }
+  .nav-link.active {
+    @apply bg-neutral-900 text-white shadow-sm
+  }
+  .sidebar {
+    @apply fixed left-0 top-0 z-40 flex h-screen flex-col overflow-hidden border-r border-neutral-200 bg-white transition-[width] duration-300
+  }
 }
 
 @layer utilities {
   .match-shake {
     animation: match-shake 0.35s ease-in-out;
+  }
+  .nav-link {
+
   }
 }
 
